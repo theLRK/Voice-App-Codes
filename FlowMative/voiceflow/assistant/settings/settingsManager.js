@@ -5,11 +5,17 @@ const SETTINGS_PATH = path.join(__dirname, "..", "..", "config", "settings.json"
 const DEFAULT_SETTINGS = {
   pushToTalkKey: "Ctrl+Space",
   mode: "auto",
+  dictationMode: "smart",
   speechModel: "whisper-small",
   commandModel: "gpt-4o-mini",
   enableFormatting: true,
   typingSpeed: "normal",
-  startOnLogin: true
+  startOnLogin: true,
+  preferredMicrophoneId: "default",
+  preferredMicrophoneName: "System Default",
+  soundFeedbackEnabled: true,
+  assistantFeaturesEnabled: false,
+  diagnosticsRetentionDays: 14
 };
 
 let settingsCache = null;

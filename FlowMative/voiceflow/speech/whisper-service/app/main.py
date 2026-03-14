@@ -77,6 +77,14 @@ model = WhisperModel(
     cpu_threads=CPU_THREADS,
     num_workers=NUM_WORKERS,
 )
+logger.info(
+    "Loaded Whisper model=%s device=%s compute_type=%s cpu_threads=%s workers=%s",
+    MODEL_SIZE,
+    DEVICE,
+    COMPUTE_TYPE,
+    CPU_THREADS,
+    NUM_WORKERS,
+)
 streaming_sessions: dict[str, dict] = {}
 streaming_sessions_lock = Lock()
 
@@ -263,12 +271,14 @@ def transcribe_file(
     *,
     file_path: str,
     language: Optional[str],
+    initial_prompt: Optional[str],
     hotwords: Optional[str],
     decode_settings: dict,
 ) -> dict:
     segments, info = model.transcribe(
         file_path,
         language=language,
+        initial_prompt=initial_prompt,
         beam_size=decode_settings["beam_size"],
         patience=decode_settings["patience"],
         repetition_penalty=decode_settings["repetition_penalty"],
@@ -308,6 +318,7 @@ def transcribe_pcm_audio(
     *,
     pcm_audio: bytes,
     language: Optional[str],
+    initial_prompt: Optional[str],
     hotwords: Optional[str],
     decode_settings: dict,
 ) -> dict:
@@ -321,6 +332,7 @@ def transcribe_pcm_audio(
         return transcribe_file(
             file_path=temp_file_path,
             language=language,
+            initial_prompt=initial_prompt,
             hotwords=hotwords,
             decode_settings=decode_settings,
         )
@@ -348,15 +360,18 @@ def log_transcription_result(
     bytes_received: int,
     result: dict,
     is_stream: bool,
+    elapsed_seconds: float,
     session_id: Optional[str] = None,
 ) -> None:
     logger.info(
-        "%s transcription complete%s bytes=%s duration=%ss speech=%ss confidence=%s language=%s(%s) segments=%s",
+        "%s transcription complete%s model=%s bytes=%s duration=%ss speech=%ss elapsed=%ss confidence=%s language=%s(%s) segments=%s",
         request_label or ("stream" if is_stream else "final"),
         f" session={session_id}" if session_id else "",
+        MODEL_SIZE,
         bytes_received,
         result["duration"],
         result["speech_duration"],
+        round_float(elapsed_seconds, 3),
         result["confidence"],
         result["language"],
         result["language_probability"],
@@ -402,6 +417,7 @@ async def transcribe(
     repetition_penalty: Optional[float] = Form(default=None),
     no_speech_threshold: Optional[float] = Form(default=None),
     log_prob_threshold: Optional[float] = Form(default=None),
+    initial_prompt: Optional[str] = Form(default=None),
     hotwords: Optional[str] = Form(default=None),
     use_personal_dictionary: bool = Form(default=True),
     request_label: Optional[str] = Form(default=None),
@@ -414,6 +430,7 @@ async def transcribe(
     bytes_received = 0
 
     try:
+        started_at = time.perf_counter()
         personal_entries = load_dictionary_entries() if use_personal_dictionary else []
         merged_hotwords = build_hotwords(personal_entries, hotwords)
         decode_settings = resolve_decode_settings(
@@ -440,6 +457,7 @@ async def transcribe(
             transcribe_file,
             file_path=temp_file_path,
             language=language,
+            initial_prompt=initial_prompt,
             hotwords=merged_hotwords,
             decode_settings=decode_settings,
         )
@@ -448,6 +466,7 @@ async def transcribe(
             bytes_received=bytes_received,
             result=result,
             is_stream=False,
+            elapsed_seconds=time.perf_counter() - started_at,
         )
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"Transcription failed: {error}") from error
@@ -474,6 +493,7 @@ async def transcribe_stream(
     repetition_penalty: Optional[float] = Form(default=None),
     no_speech_threshold: Optional[float] = Form(default=None),
     log_prob_threshold: Optional[float] = Form(default=None),
+    initial_prompt: Optional[str] = Form(default=None),
     hotwords: Optional[str] = Form(default=None),
     use_personal_dictionary: bool = Form(default=True),
     request_label: Optional[str] = Form(default=None),
@@ -550,10 +570,12 @@ async def transcribe_stream(
         )
 
         if should_transcribe:
+            started_at = time.perf_counter()
             result = await run_in_threadpool(
                 transcribe_pcm_audio,
                 pcm_audio=pcm_audio,
                 language=language_hint,
+                initial_prompt=initial_prompt,
                 hotwords=merged_hotwords,
                 decode_settings=decode_settings,
             )
@@ -591,6 +613,7 @@ async def transcribe_stream(
                 bytes_received=len(pcm_audio),
                 result=result,
                 is_stream=True,
+                elapsed_seconds=time.perf_counter() - started_at,
                 session_id=session_id,
             )
         elif is_final:

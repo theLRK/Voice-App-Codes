@@ -13,6 +13,34 @@ let sessionMemory = {
   lastResult: null
 };
 
+function normalizeWarnings(warnings) {
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+
+  return warnings
+    .filter((warning) => typeof warning === "string" && warning.trim())
+    .map((warning) => warning.trim());
+}
+
+function normalizeHistoryEntry(entry, index = 0) {
+  return {
+    id: String(entry.id || index + 1),
+    transcript: typeof entry.transcript === "string" ? entry.transcript : "",
+    command: typeof entry.command === "string" ? entry.command : "",
+    result: typeof entry.result === "string" ? entry.result : "",
+    timestamp: typeof entry.timestamp === "string" ? entry.timestamp : new Date().toISOString(),
+    insertionMethod: typeof entry.insertionMethod === "string" ? entry.insertionMethod : "pending",
+    microphoneName: typeof entry.microphoneName === "string" ? entry.microphoneName : "System Default",
+    whisperModel: typeof entry.whisperModel === "string" ? entry.whisperModel : "",
+    transcriptionDurationMs: Number.isFinite(entry.transcriptionDurationMs) ? entry.transcriptionDurationMs : 0,
+    refinementDurationMs: Number.isFinite(entry.refinementDurationMs) ? entry.refinementDurationMs : 0,
+    audioFileSizeBytes: Number.isFinite(entry.audioFileSizeBytes) ? entry.audioFileSizeBytes : 0,
+    speechRatio: Number.isFinite(entry.speechRatio) ? entry.speechRatio : 0,
+    warnings: normalizeWarnings(entry.warnings)
+  };
+}
+
 function ensureMemoryFile() {
   if (!fs.existsSync(MEMORY_STORE_PATH)) {
     fs.writeFileSync(MEMORY_STORE_PATH, JSON.stringify(sessionMemory, null, 2), "utf-8");
@@ -42,13 +70,7 @@ function loadMemory() {
 
     sessionMemory = {
       conversationHistory: Array.isArray(parsed.conversationHistory)
-        ? parsed.conversationHistory.map((entry, index) => ({
-            id: String(entry.id || index + 1),
-            transcript: typeof entry.transcript === "string" ? entry.transcript : "",
-            command: typeof entry.command === "string" ? entry.command : "",
-            result: typeof entry.result === "string" ? entry.result : "",
-            timestamp: typeof entry.timestamp === "string" ? entry.timestamp : new Date().toISOString()
-          }))
+        ? parsed.conversationHistory.map((entry, index) => normalizeHistoryEntry(entry, index))
         : [],
       lastTranscript: typeof parsed.lastTranscript === "string" ? parsed.lastTranscript : null,
       lastCommand: typeof parsed.lastCommand === "string" ? parsed.lastCommand : null,
@@ -88,14 +110,19 @@ function getMemorySnapshot() {
   };
 }
 
-function saveInteraction(transcript, command, result) {
-  const entry = {
-    id: String(nextEntryId++),
-    transcript: typeof transcript === "string" ? transcript.trim() : "",
-    command: typeof command === "string" ? command.trim() : "",
-    result: typeof result === "string" ? result.trim() : "",
-    timestamp: new Date().toISOString()
-  };
+function saveInteraction(transcriptOrEntry, command, result) {
+  const entry = typeof transcriptOrEntry === "object" && transcriptOrEntry !== null
+    ? normalizeHistoryEntry({
+        ...transcriptOrEntry,
+        id: String(nextEntryId++)
+      })
+    : normalizeHistoryEntry({
+        id: String(nextEntryId++),
+        transcript: typeof transcriptOrEntry === "string" ? transcriptOrEntry.trim() : "",
+        command: typeof command === "string" ? command.trim() : "",
+        result: typeof result === "string" ? result.trim() : "",
+        timestamp: new Date().toISOString()
+      });
 
   sessionMemory.conversationHistory.push(entry);
 
@@ -123,6 +150,31 @@ function deleteHistoryEntry(entryId) {
   return getConversationHistory();
 }
 
+function updateHistoryEntry(entryId, patch = {}) {
+  const entryIndex = sessionMemory.conversationHistory.findIndex((entry) => entry.id === String(entryId));
+
+  if (entryIndex === -1) {
+    return null;
+  }
+
+  const currentEntry = sessionMemory.conversationHistory[entryIndex];
+  const nextEntry = normalizeHistoryEntry({
+    ...currentEntry,
+    ...patch,
+    id: currentEntry.id
+  });
+
+  sessionMemory.conversationHistory[entryIndex] = nextEntry;
+  recalculateLastPointers();
+  saveMemory();
+  return { ...nextEntry };
+}
+
+function getHistoryEntry(entryId) {
+  const entry = sessionMemory.conversationHistory.find((item) => item.id === String(entryId));
+  return entry ? { ...entry } : null;
+}
+
 function clearMemory() {
   sessionMemory = {
     conversationHistory: [],
@@ -144,6 +196,8 @@ module.exports = {
   saveInteraction,
   getLastResult,
   getConversationHistory,
+  getHistoryEntry,
   deleteHistoryEntry,
+  updateHistoryEntry,
   clearMemory
 };

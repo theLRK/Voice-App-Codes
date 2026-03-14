@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FlowMative Control Center</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", sans-serif;
+        --bg: #eef5f7;
+        --panel: rgba(255, 255, 255, 0.94);
+        --panel-border: rgba(21, 49, 64, 0.08);
+        --ink: #153140;
+        --muted: #587182;
+        --accent: #0d8f86;
+        --accent-soft: rgba(13, 143, 134, 0.12);
+        --warning: #b16d00;
+        --danger: #91263a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top left, rgba(13, 143, 134, 0.18), transparent 30%),
+          linear-gradient(180deg, #f6fbfc 0%, var(--bg) 100%);
+        color: var(--ink);
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 230px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        padding: 24px 18px;
+        background: rgba(7, 30, 42, 0.96);
+        color: #f4fbff;
+      }
+
+      .brand {
+        margin-bottom: 22px;
+      }
+
+      .brand h1 {
+        margin: 0 0 8px;
+        font-size: 1.35rem;
+      }
+
+      .brand p {
+        margin: 0;
+        color: rgba(244, 251, 255, 0.72);
+        line-height: 1.5;
+      }
+
+      .nav {
+        display: grid;
+        gap: 8px;
+      }
+
+      .nav button {
+        border: 0;
+        border-radius: 14px;
+        padding: 12px 14px;
+        text-align: left;
+        font: inherit;
+        cursor: pointer;
+        color: inherit;
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .nav button.active {
+        background: rgba(122, 245, 226, 0.18);
+        color: #bafff4;
+      }
+
+      .content {
+        padding: 24px;
+      }
+
+      .header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 22px;
+      }
+
+      .header h2 {
+        margin: 0;
+        font-size: 1.75rem;
+      }
+
+      .header p {
+        margin: 8px 0 0;
+        color: var(--muted);
+      }
+
+      .status-chip {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .panel-grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+      }
+
+      .card,
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 18px 40px rgba(21, 49, 64, 0.08);
+      }
+
+      .card .label,
+      .section-title,
+      .entry-label {
+        font-size: 0.78rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .card .value {
+        margin-top: 10px;
+        font-size: 1.2rem;
+        font-weight: 700;
+      }
+
+      .panel[hidden] {
+        display: none;
+      }
+
+      .panel h3 {
+        margin: 0 0 8px;
+        font-size: 1.15rem;
+      }
+
+      .panel p {
+        margin: 0 0 16px;
+        color: var(--muted);
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      label {
+        font-weight: 700;
+      }
+
+      input,
+      select,
+      textarea,
+      button {
+        font: inherit;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid #cfe0e6;
+        background: white;
+        color: var(--ink);
+      }
+
+      textarea {
+        min-height: 92px;
+        resize: vertical;
+      }
+
+      .stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .button-row,
+      .entry-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        border: 0;
+        border-radius: 12px;
+        padding: 10px 14px;
+        cursor: pointer;
+        background: #d8eeed;
+        color: var(--ink);
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: white;
+      }
+
+      button.secondary {
+        background: #eef4f6;
+      }
+
+      button.danger {
+        background: #ffe4ea;
+        color: var(--danger);
+      }
+
+      .list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .entry {
+        padding: 16px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(21, 49, 64, 0.08);
+      }
+
+      .entry-meta {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+
+      .pill {
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #edf5f6;
+        color: var(--muted);
+        font-size: 0.86rem;
+        font-weight: 700;
+      }
+
+      .warning {
+        color: var(--warning);
+      }
+
+      .empty {
+        padding: 18px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--muted);
+      }
+
+      .status-text {
+        min-height: 1.3rem;
+        margin-top: 6px;
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      @media (max-width: 900px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          padding-bottom: 10px;
+        }
+
+        .nav {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .content {
+          padding: 16px;
+        }
+
+        .nav {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>FlowMative</h1>
+          <p>Desktop dictation pilot with live trust signals, personal vocabulary, and local diagnostics.</p>
+        </div>
+
+        <nav class="nav">
+          <button data-section="home" class="active">Home</button>
+          <button data-section="settings">Settings</button>
+          <button data-section="history">History</button>
+          <button data-section="dictionary">Dictionary</button>
+          <button data-section="diagnostics">Diagnostics</button>
+          <button data-section="experimental">Experimental</button>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="header">
+          <div>
+            <h2 id="sectionTitle">Home</h2>
+            <p id="sectionDescription">Monitor dictation readiness and the current desktop pipeline.</p>
+          </div>
+          <div id="statusChip" class="status-chip">Loading...</div>
+        </header>
+
+        <section id="panel-home" class="panel-grid panel">
+          <div class="cards">
+            <article class="card">
+              <div class="label">Assistant</div>
+              <div id="cardAssistant" class="value">Starting</div>
+            </article>
+            <article class="card">
+              <div class="label">Hotkey</div>
+              <div id="cardHotkey" class="value">Ctrl+Space</div>
+            </article>
+            <article class="card">
+              <div class="label">Microphone</div>
+              <div id="cardMicrophone" class="value">System Default</div>
+            </article>
+            <article class="card">
+              <div class="label">Whisper</div>
+              <div id="cardWhisper" class="value">Loading</div>
+            </article>
+          </div>
+          <div class="panel">
+            <h3>Current Session</h3>
+            <p>Live state from the voice pipeline and overlay.</p>
+            <div class="stack">
+              <div>
+                <div class="section-title">State</div>
+                <div id="homeState">Ready</div>
+              </div>
+              <div>
+                <div class="section-title">Transcript</div>
+                <div id="homeTranscript">Waiting for input</div>
+              </div>
+              <div>
+                <div class="section-title">Action</div>
+                <div id="homeAction">Standing by</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="panel-settings" class="panel" hidden>
+          <h3>Settings</h3>
+          <p>These settings are applied immediately to the running assistant.</p>
+          <div class="form-grid">
+            <div class="field">
+              <label for="pushToTalkKey">Push-to-talk key</label>
+              <select id="pushToTalkKey">
+                <option value="Ctrl+Space">Ctrl+Space</option>
+                <option value="Alt+Space">Alt+Space</option>
+                <option value="Ctrl+Alt+Space">Ctrl+Alt+Space</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="mode">Intent mode</label>
+              <select id="mode">
+                <option value="auto">Auto detect</option>
+                <option value="dictation">Dictation only</option>
+                <option value="command">Command only</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="dictationMode">Dictation mode</label>
+              <select id="dictationMode">
+                <option value="smart">Smart</option>
+                <option value="fast">Fast</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="speechModel">Speech model</label>
+              <select id="speechModel">
+                <option value="whisper-small">whisper-small</option>
+                <option value="whisper-base">whisper-base</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="commandModel">Command model</label>
+              <select id="commandModel">
+                <option value="gpt-4o-mini">gpt-4o-mini</option>
+                <option value="gpt-4o">gpt-4o</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="preferredMicrophoneId">Microphone</label>
+              <select id="preferredMicrophoneId"></select>
+            </div>
+            <div class="field">
+              <label for="typingSpeed">Typing speed</label>
+              <select id="typingSpeed">
+                <option value="slow">Slow</option>
+                <option value="normal">Normal</option>
+                <option value="fast">Fast</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="startOnLogin">Start on login</label>
+              <select id="startOnLogin">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="enableFormatting">Formatting</label>
+              <select id="enableFormatting">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="soundFeedbackEnabled">Sound feedback</label>
+              <select id="soundFeedbackEnabled">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+          </div>
+          <div id="settingsStatus" class="status-text"></div>
+        </section>
+
+        <section id="panel-history" class="panel" hidden>
+          <h3>History</h3>
+          <p>Review recent outputs, copy them, or retry insertion into the current app.</p>
+          <div class="button-row">
+            <button id="historyClear" class="danger">Clear History</button>
+          </div>
+          <div id="historyStatus" class="status-text"></div>
+          <div id="historyList" class="list"></div>
+        </section>
+
+        <section id="panel-dictionary" class="panel" hidden>
+          <h3>Personal Dictionary</h3>
+          <p>Add names, company terms, and technical words to improve recognition quality.</p>
+          <div class="stack">
+            <div class="field">
+              <label for="dictionaryInput">New term</label>
+              <input id="dictionaryInput" type="text" placeholder="FlowMative" />
+            </div>
+            <div class="button-row">
+              <button id="dictionaryAdd" class="primary">Add Term</button>
+              <button id="dictionaryClear" class="danger">Clear Dictionary</button>
+            </div>
+            <div id="dictionaryStatus" class="status-text"></div>
+            <div id="dictionaryList" class="list"></div>
+          </div>
+        </section>
+
+        <section id="panel-diagnostics" class="panel" hidden>
+          <h3>Diagnostics</h3>
+          <p>Keep this local-only log available for pilot support and quality debugging.</p>
+          <div class="button-row">
+            <button id="exportDiagnostics" class="primary">Export Logs</button>
+          </div>
+          <div id="diagnosticsStatus" class="status-text"></div>
+          <div id="diagnosticsSummary" class="cards"></div>
+          <div id="diagnosticsSessions" class="list"></div>
+        </section>
+
+        <section id="panel-experimental" class="panel" hidden>
+          <h3>Experimental</h3>
+          <p>Advanced features stay off the main user path during the pilot.</p>
+          <div class="stack">
+            <div class="field">
+              <label for="assistantFeaturesEnabled">Assistant features</label>
+              <select id="assistantFeaturesEnabled">
+                <option value="false">Hidden</option>
+                <option value="true">Enabled</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="macroPhrase">Macro phrase</label>
+              <input id="macroPhrase" type="text" placeholder="daily standup" />
+            </div>
+            <div class="field">
+              <label for="macroExpansion">Macro expansion</label>
+              <textarea id="macroExpansion" placeholder="Hello team, here is my update for today:"></textarea>
+            </div>
+            <div class="button-row">
+              <button id="macroAdd" class="primary">Add Macro</button>
+            </div>
+            <div id="experimentalStatus" class="status-text"></div>
+            <div id="macroList" class="list"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./renderers/controlCenterRenderer.js"></script>
+  </body>
+</html>

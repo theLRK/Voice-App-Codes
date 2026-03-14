@@ -1,8 +1,7 @@
-const { ipcRenderer } = require("electron");
-
 const bubbleElement = document.querySelector(".bubble");
 const iconElement = document.getElementById("icon");
 const labelElement = document.getElementById("label");
+const api = window.flowmative;
 
 function renderBubble(state, icon, label, hidden) {
   bubbleElement.dataset.state = state;
@@ -11,18 +10,19 @@ function renderBubble(state, icon, label, hidden) {
   labelElement.textContent = label;
 }
 
-ipcRenderer.on("assistant-idle", () => {
-  renderBubble("idle", "\u25CB", "Idle", true);
-});
-
-ipcRenderer.on("assistant-listening", () => {
-  renderBubble("listening", "\uD83D\uDD34", "Listening", false);
-});
-
-ipcRenderer.on("assistant-processing", () => {
-  renderBubble("processing", "\u2699", "Processing", false);
-});
-
-ipcRenderer.on("assistant-typing", () => {
-  renderBubble("typing", "\u2713", "Typing", false);
+api.onBubbleUpdate((payload = {}) => {
+  switch (payload.state) {
+    case "Listening":
+      renderBubble("listening", "\uD83D\uDD34", "Listening", false);
+      break;
+    case "Processing":
+      renderBubble("processing", "\u2699", "Processing", false);
+      break;
+    case "Typing":
+      renderBubble("typing", "\u2713", "Typing", false);
+      break;
+    default:
+      renderBubble("idle", "\u25CB", "Idle", true);
+      break;
+  }
 });

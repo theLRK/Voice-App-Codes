@@ -10,9 +10,15 @@ const TRANSCRIBE_URL = "http://127.0.0.1:8000/transcribe";
 const STREAM_TRANSCRIBE_URL = "http://127.0.0.1:8000/transcribe/stream";
 const DEFAULT_AUDIO_FILE_PATH = path.join(__dirname, "recording.wav");
 const execFileAsync = promisify(execFile);
-const DEFAULT_STREAM_CHUNK_BYTES = 32000;
-const DEFAULT_STREAM_FLUSH_INTERVAL_MS = 450;
-const DEFAULT_STREAM_MIN_VOICED_BYTES = 12000;
+const DEFAULT_STREAM_CHUNK_BYTES = Number(
+  process.env.FLOWMATIVE_STREAM_CHUNK_BYTES || 48000
+);
+const DEFAULT_STREAM_FLUSH_INTERVAL_MS = Number(
+  process.env.FLOWMATIVE_STREAM_FLUSH_INTERVAL_MS || 500
+);
+const DEFAULT_STREAM_MIN_VOICED_BYTES = Number(
+  process.env.FLOWMATIVE_STREAM_MIN_VOICED_BYTES || 16000
+);
 const DEFAULT_STREAM_SILENCE_RMS_THRESHOLD = Number(
   process.env.FLOWMATIVE_STREAM_SILENCE_RMS_THRESHOLD || 0.01
 );
@@ -22,8 +28,14 @@ const DEFAULT_STREAM_SILENCE_HANGOVER_CHUNKS = Number(
 const NORMALIZED_SAMPLE_RATE = 16000;
 const NORMALIZED_CHANNELS = 1;
 const NORMALIZED_SAMPLE_FORMAT = "s16";
+const NORMALIZED_BITS_PER_SAMPLE = 16;
 const NORMALIZATION_FILTER_GRAPH = process.env.FLOWMATIVE_TRANSCRIPTION_FILTER
   || "highpass=f=70,lowpass=f=7600,dynaudnorm=f=150:g=15";
+const SKIP_NORMALIZATION_FOR_OPTIMAL_WAV = process.env.FLOWMATIVE_SKIP_NORMALIZATION_FOR_OPTIMAL_WAV !== "false";
+const DEFAULT_FINAL_INITIAL_PROMPT = process.env.FLOWMATIVE_FINAL_INITIAL_PROMPT
+  || "This is high quality spoken dictation. Prefer accurate wording, punctuation, and paragraph breaks.";
+const DEFAULT_STREAM_INITIAL_PROMPT = process.env.FLOWMATIVE_STREAM_INITIAL_PROMPT
+  || "This is live dictation. Favor accurate partial words and natural punctuation.";
 const FINAL_TRANSCRIPTION_DEFAULTS = {
   beamSize: 5,
   vadFilter: true,
@@ -31,7 +43,8 @@ const FINAL_TRANSCRIPTION_DEFAULTS = {
   patience: 1.2,
   repetitionPenalty: 1.02,
   noSpeechThreshold: 0.45,
-  logProbThreshold: -1.0
+  logProbThreshold: -1.0,
+  initialPrompt: DEFAULT_FINAL_INITIAL_PROMPT
 };
 const STREAM_TRANSCRIPTION_DEFAULTS = {
   beamSize: 2,
@@ -40,7 +53,8 @@ const STREAM_TRANSCRIPTION_DEFAULTS = {
   patience: 1.0,
   repetitionPenalty: 1.01,
   noSpeechThreshold: 0.5,
-  logProbThreshold: -1.2
+  logProbThreshold: -1.2,
+  initialPrompt: DEFAULT_STREAM_INITIAL_PROMPT
 };
 
 function roundNumber(value, digits = 3) {
@@ -107,6 +121,16 @@ function readWavMetadata(filePath) {
   }
 }
 
+function isOptimalTranscriptionWav(metadata) {
+  if (!metadata) {
+    return false;
+  }
+
+  return metadata.channels === NORMALIZED_CHANNELS
+    && metadata.sampleRate === NORMALIZED_SAMPLE_RATE
+    && metadata.bitsPerSample === NORMALIZED_BITS_PER_SAMPLE;
+}
+
 function buildRequestOptions(options = {}, mode = "final") {
   const defaults = mode === "stream"
     ? STREAM_TRANSCRIPTION_DEFAULTS
@@ -130,6 +154,9 @@ function buildRequestOptions(options = {}, mode = "final") {
     logProbThreshold: Number.isFinite(options.logProbThreshold)
       ? options.logProbThreshold
       : defaults.logProbThreshold,
+    initialPrompt: typeof options.initialPrompt === "string" && options.initialPrompt.trim()
+      ? options.initialPrompt.trim()
+      : defaults.initialPrompt,
     hotwords: typeof options.hotwords === "string" && options.hotwords.trim()
       ? options.hotwords.trim()
       : null,
@@ -149,6 +176,18 @@ function appendFormField(form, name, value) {
 }
 
 async function normalizeAudioForTranscription(audioFilePath) {
+  const sourceMetadata = readWavMetadata(audioFilePath);
+
+  if (SKIP_NORMALIZATION_FOR_OPTIMAL_WAV && isOptimalTranscriptionWav(sourceMetadata)) {
+    console.log("Audio already in transcription-ready format; skipping normalization");
+    return {
+      filePath: audioFilePath,
+      metadata: sourceMetadata,
+      normalized: false,
+      cleanup: null
+    };
+  }
+
   const normalizedPath = path.join(
     path.dirname(audioFilePath),
     `${path.basename(audioFilePath, path.extname(audioFilePath) || ".wav")}.normalized.wav`
@@ -184,6 +223,7 @@ async function normalizeAudioForTranscription(audioFilePath) {
     return {
       filePath: normalizedPath,
       metadata: readWavMetadata(normalizedPath),
+      normalized: true,
       cleanup: () => {
         fs.rmSync(normalizedPath, { force: true });
       }
@@ -193,6 +233,7 @@ async function normalizeAudioForTranscription(audioFilePath) {
       return {
         filePath: audioFilePath,
         metadata: readWavMetadata(audioFilePath),
+        normalized: false,
         cleanup: null
       };
     }
@@ -218,6 +259,7 @@ function buildDiagnostics(payload, context = {}) {
       ? payload.segment_count
       : segments.length,
     audio: context.audioMetadata || null,
+    performance: context.performance || null,
     segments,
     request: context.requestOptions ? {
       beamSize: context.requestOptions.beamSize,
@@ -227,7 +269,8 @@ function buildDiagnostics(payload, context = {}) {
       repetitionPenalty: context.requestOptions.repetitionPenalty,
       noSpeechThreshold: context.requestOptions.noSpeechThreshold,
       logProbThreshold: context.requestOptions.logProbThreshold,
-      language: context.requestOptions.language
+      language: context.requestOptions.language,
+      hasInitialPrompt: Boolean(context.requestOptions.initialPrompt)
     } : null
   };
 }
@@ -237,8 +280,10 @@ async function transcribeAudio(audioFilePath = DEFAULT_AUDIO_FILE_PATH, options 
     throw new Error(`Audio file not found: ${audioFilePath}`);
   }
 
+  const overallStartedAt = Date.now();
   const requestOptions = buildRequestOptions(options, "final");
   const normalizedAudio = await normalizeAudioForTranscription(audioFilePath);
+  const normalizationElapsedMs = Date.now() - overallStartedAt;
   const form = new FormData();
   form.append("file", fs.createReadStream(normalizedAudio.filePath));
   appendFormField(form, "language", requestOptions.language);
@@ -249,16 +294,19 @@ async function transcribeAudio(audioFilePath = DEFAULT_AUDIO_FILE_PATH, options 
   appendFormField(form, "repetition_penalty", requestOptions.repetitionPenalty);
   appendFormField(form, "no_speech_threshold", requestOptions.noSpeechThreshold);
   appendFormField(form, "log_prob_threshold", requestOptions.logProbThreshold);
+  appendFormField(form, "initial_prompt", requestOptions.initialPrompt);
   appendFormField(form, "hotwords", requestOptions.hotwords);
   appendFormField(form, "use_personal_dictionary", requestOptions.usePersonalDictionary);
   appendFormField(form, "request_label", requestOptions.requestLabel);
 
   try {
+    const requestStartedAt = Date.now();
     const response = await axios.post(options.url || TRANSCRIBE_URL, form, {
       headers: form.getHeaders(),
       maxBodyLength: Infinity,
       timeout: 60000
     });
+    const requestElapsedMs = Date.now() - requestStartedAt;
 
     const payload = response.data || {};
     const transcript = typeof payload.transcript === "string"
@@ -266,7 +314,13 @@ async function transcribeAudio(audioFilePath = DEFAULT_AUDIO_FILE_PATH, options 
       : "";
     const diagnostics = buildDiagnostics(payload, {
       audioMetadata: normalizedAudio.metadata,
-      requestOptions
+      requestOptions,
+      performance: {
+        normalizedAudio: normalizedAudio.normalized,
+        normalizationMs: normalizationElapsedMs,
+        requestMs: requestElapsedMs,
+        totalMs: Date.now() - overallStartedAt
+      }
     });
 
     if (options.logTranscript !== false) {
@@ -308,6 +362,7 @@ async function postStreamingChunk(url, payload) {
   appendFormField(form, "repetition_penalty", payload.requestOptions.repetitionPenalty);
   appendFormField(form, "no_speech_threshold", payload.requestOptions.noSpeechThreshold);
   appendFormField(form, "log_prob_threshold", payload.requestOptions.logProbThreshold);
+  appendFormField(form, "initial_prompt", payload.requestOptions.initialPrompt);
   appendFormField(form, "hotwords", payload.requestOptions.hotwords);
   appendFormField(form, "use_personal_dictionary", payload.requestOptions.usePersonalDictionary);
   appendFormField(form, "request_label", payload.requestOptions.requestLabel);
@@ -384,6 +439,17 @@ function createStreamingTranscriber(options = {}) {
     raw: null
   });
   let silentChunkStreak = 0;
+  const stats = {
+    startedAt: Date.now(),
+    appendedChunkCount: 0,
+    skippedSilentChunkCount: 0,
+    flushCount: 0,
+    requestCount: 0,
+    totalBytesSent: 0,
+    totalRequestDurationMs: 0,
+    lastRequestStartedAt: null,
+    totalRequestIntervalMs: 0
+  };
 
   const clearFlushTimer = () => {
     if (!flushTimer) {
@@ -415,6 +481,13 @@ function createStreamingTranscriber(options = {}) {
       diagnostics: lastDiagnostics,
       raw: null
     })).then(async () => {
+      const requestStartedAt = Date.now();
+      stats.requestCount += 1;
+      stats.totalBytesSent += chunk.length;
+      if (stats.lastRequestStartedAt !== null) {
+        stats.totalRequestIntervalMs += requestStartedAt - stats.lastRequestStartedAt;
+      }
+      stats.lastRequestStartedAt = requestStartedAt;
       const rawPayload = await postStreamingChunk(url, {
         sessionId,
         chunkIndex: currentChunkIndex,
@@ -422,10 +495,29 @@ function createStreamingTranscriber(options = {}) {
         chunk,
         requestOptions
       });
+      stats.totalRequestDurationMs += Date.now() - requestStartedAt;
       const transcript = typeof rawPayload.transcript === "string"
         ? rawPayload.transcript.trim()
         : "";
-      const diagnostics = buildDiagnostics(rawPayload, { requestOptions });
+      const diagnostics = buildDiagnostics(rawPayload, {
+        requestOptions,
+        performance: {
+          requestCount: stats.requestCount,
+          flushCount: stats.flushCount,
+          totalBytesSent: stats.totalBytesSent,
+          appendedChunkCount: stats.appendedChunkCount,
+          skippedSilentChunkCount: stats.skippedSilentChunkCount,
+          averageRequestDurationMs: roundNumber(
+            stats.requestCount ? stats.totalRequestDurationMs / stats.requestCount : 0
+          ),
+          averageRequestIntervalMs: roundNumber(
+            stats.requestCount > 1
+              ? stats.totalRequestIntervalMs / (stats.requestCount - 1)
+              : 0
+          ),
+          sessionMs: Date.now() - stats.startedAt
+        }
+      });
       const payload = {
         transcript,
         diagnostics,
@@ -471,6 +563,7 @@ function createStreamingTranscriber(options = {}) {
       };
     }
 
+    stats.flushCount += 1;
     const chunk = pendingBytes ? Buffer.concat(pendingBuffers, pendingBytes) : Buffer.alloc(0);
     pendingBuffers = [];
     pendingBytes = 0;
@@ -486,6 +579,7 @@ function createStreamingTranscriber(options = {}) {
         return;
       }
 
+      stats.appendedChunkCount += 1;
       const rms = getPcmChunkRms(chunk);
       const speechLikely = rms >= silenceRmsThreshold;
 
@@ -494,6 +588,7 @@ function createStreamingTranscriber(options = {}) {
         pendingVoicedBytes += chunk.length;
       } else if (!pendingBytes || silentChunkStreak >= silenceHangoverChunks) {
         silentChunkStreak += 1;
+        stats.skippedSilentChunkCount += 1;
         return;
       } else {
         silentChunkStreak += 1;

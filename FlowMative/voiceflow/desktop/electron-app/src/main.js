@@ -66,6 +66,9 @@ const OVERLAY_WINDOW_WIDTH = 400;
 const OVERLAY_WINDOW_HEIGHT = 200;
 const OVERLAY_MARGIN = 20;
 const OVERLAY_HIDE_DELAY_MS = 1500;
+const FOCUS_RESTORE_DELAY_MS = 220;
+const CLIPBOARD_SETTLE_DELAY_MS = 90;
+const PASTE_SETTLE_DELAY_MS = 180;
 const BUBBLE_WINDOW_WIDTH = 120;
 const BUBBLE_WINDOW_HEIGHT = 120;
 const BUBBLE_MARGIN = 28;
@@ -117,6 +120,10 @@ function getTypingDelay() {
   }
 }
 
+function getPasteModifier() {
+  return process.platform === "darwin" ? "command" : "control";
+}
+
 function normalizeLanguageHint(language) {
   if (typeof language !== "string" || !language.trim()) {
     return null;
@@ -161,6 +168,7 @@ function logTranscriptionDiagnostics(diagnostics) {
   }
 
   console.log("Transcription diagnostics:", JSON.stringify({
+    speechModel: currentSettings.speechModel,
     requestLabel: diagnostics.requestLabel,
     language: diagnostics.language,
     languageProbability: diagnostics.languageProbability,
@@ -172,6 +180,7 @@ function logTranscriptionDiagnostics(diagnostics) {
     speechRatio: diagnostics.speechRatio,
     segmentCount: diagnostics.segmentCount,
     audio: diagnostics.audio,
+    performance: diagnostics.performance,
     segments: diagnostics.segments
   }));
 }
@@ -548,7 +557,7 @@ function completeOverlay(action = "Result ready", delay = OVERLAY_HIDE_DELAY_MS)
 async function captureSelectedText() {
   const clipboardBackup = clipboard.readText();
   const sentinel = `__flowmative_selection__${Date.now()}`;
-  const modifier = process.platform === "darwin" ? "command" : "control";
+  const modifier = getPasteModifier();
 
   clipboard.writeText(sentinel);
   await wait(50);
@@ -626,44 +635,113 @@ async function typeText(text) {
     return "empty";
   }
 
-  console.log(`Typing sanitized text: ${sanitized}`);
-  await restoreExternalFocusBeforeTyping();
+  try {
+    return await pasteTextIntoActiveApplication(sanitized);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error || "Unknown clipboard paste error.");
+    console.error(`Clipboard paste failed: ${errorMessage}`);
+  }
 
   try {
-    robot.setKeyboardDelay(getTypingDelay());
-    robot.typeString(sanitized);
-    return "typed";
+    return fallbackKeyboardInjection(sanitized);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error || "Unknown RobotJS typing error.");
-    console.error(`Typing failed: ${errorMessage}`);
-  }
-
-  const clipboardBackup = clipboard.readText();
-  const modifier = process.platform === "darwin" ? "command" : "control";
-  let shouldRestoreClipboard = true;
-
-  try {
-    clipboard.writeText(sanitized);
-    await wait(60);
-    robot.keyTap("v", modifier);
-    await wait(Math.max(80, getTypingDelay() + 40));
-    return "typed";
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error || "Unknown paste fallback error.");
-    console.error(`Paste fallback failed: ${errorMessage}`);
-    shouldRestoreClipboard = false;
+    console.error(`Keyboard injection fallback failed: ${errorMessage}`);
     clipboard.writeText(sanitized);
     return "clipboard";
-  } finally {
-    if (shouldRestoreClipboard && clipboard.readText() === sanitized) {
-      clipboard.writeText(clipboardBackup);
+  }
+}
+
+function captureClipboardSnapshot() {
+  const formats = clipboard.availableFormats();
+  const buffers = [];
+
+  for (const format of formats) {
+    try {
+      buffers.push({
+        format,
+        buffer: clipboard.readBuffer(format)
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error || "Unknown clipboard format error.");
+      console.error(`Skipping clipboard format backup for ${format}: ${errorMessage}`);
     }
   }
+
+  return {
+    text: clipboard.readText(),
+    buffers
+  };
+}
+
+function restoreClipboardSnapshot(snapshot) {
+  if (!snapshot) {
+    return false;
+  }
+
+  clipboard.clear();
+  let restored = false;
+
+  for (const entry of snapshot.buffers || []) {
+    if (!entry || !entry.format || !Buffer.isBuffer(entry.buffer)) {
+      continue;
+    }
+
+    try {
+      clipboard.writeBuffer(entry.format, entry.buffer);
+      restored = true;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error || "Unknown clipboard restore error.");
+      console.error(`Failed to restore clipboard format ${entry.format}: ${errorMessage}`);
+    }
+  }
+
+  if (!restored && typeof snapshot.text === "string" && snapshot.text.length) {
+    clipboard.writeText(snapshot.text);
+    restored = true;
+  }
+
+  if (restored) {
+    console.log("Clipboard restored");
+  }
+
+  return restored;
+}
+
+async function pasteTextIntoActiveApplication(text) {
+  const clipboardSnapshot = captureClipboardSnapshot();
+  console.log(`Preparing clipboard paste for ${text.length} characters`);
+  await restoreExternalFocusBeforeTyping();
+
+  console.log("Copying text to clipboard");
+  clipboard.writeText(text);
+  await wait(CLIPBOARD_SETTLE_DELAY_MS);
+
+  console.log("Pasting into active application");
+  robot.keyTap("v", getPasteModifier());
+  await wait(PASTE_SETTLE_DELAY_MS);
+
+  if (clipboard.readText() === text) {
+    restoreClipboardSnapshot(clipboardSnapshot);
+  }
+
+  return "pasted";
+}
+
+function fallbackKeyboardInjection(text) {
+  console.log("Falling back to keyboard injection");
+  robot.setKeyboardDelay(getTypingDelay());
+  robot.typeString(text);
+  return "typed";
 }
 
 function sanitizeTypingText(text) {
   return text
     .normalize("NFKC")
+    .replace(/[\u201C\u201D]/g, "\"")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u2010\u2011\u2012\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
     .replace(/[“”]/g, "\"")
     .replace(/[‘’]/g, "'")
     .replace(/[‐‑‒–—]/g, "-")
@@ -675,7 +753,7 @@ function sanitizeTypingText(text) {
 }
 
 async function restoreExternalFocusBeforeTyping() {
-  console.log("Restoring focus before typing...");
+  console.log("Restoring focus before text insertion...");
 
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     if (typeof overlayWindow.blur === "function") {
@@ -689,8 +767,12 @@ async function restoreExternalFocusBeforeTyping() {
     bubbleWindow.blur();
   }
 
-  await wait(150);
-  console.log("Typing into external application.");
+  if (bubbleWindow && !bubbleWindow.isDestroyed()) {
+    bubbleWindow.hide();
+  }
+
+  await wait(FOCUS_RESTORE_DELAY_MS);
+  console.log("Ready to insert text into external application.");
 }
 
 async function startPipelineRecording() {
@@ -760,6 +842,7 @@ async function stopPipelineRecording() {
     }
 
     console.log("Processing transcription...");
+    console.log(`Speech model in use: ${currentSettings.speechModel}`);
 
     const startedAt = process.hrtime.bigint();
     const recordedAudioPath = audioFilePath || DEFAULT_OUTPUT_PATH;
@@ -825,10 +908,12 @@ async function stopPipelineRecording() {
 
       if (commandResult.action === "type") {
         setBubbleState("Typing");
-        setAction("Typing result into active app");
+        setAction("Pasting result into active app");
         const typingResult = await typeText(commandResult.response);
-        if (typingResult === "typed") {
-          console.log("Typed into active application.");
+        if (typingResult === "pasted") {
+          console.log("Pasted into active application.");
+        } else if (typingResult === "typed") {
+          console.log("Inserted into active application with keyboard fallback.");
         } else if (typingResult === "clipboard") {
           console.log("Typing failed. Copied result to clipboard instead.");
         } else {
@@ -836,11 +921,13 @@ async function stopPipelineRecording() {
         }
         hideBubbleWindow();
         completeOverlay(
-          typingResult === "typed"
-            ? "Typed into active app"
-            : typingResult === "clipboard"
-              ? "Copied result to clipboard"
-              : "Nothing to type"
+          typingResult === "pasted"
+            ? "Pasted into active app"
+            : typingResult === "typed"
+              ? "Inserted into active app"
+              : typingResult === "clipboard"
+                ? "Copied result to clipboard"
+                : "Nothing to type"
         );
       } else {
         setAction("Copying result to clipboard");
@@ -873,14 +960,17 @@ async function stopPipelineRecording() {
         }
       } else {
         console.log("Refinement skipped");
-        setAction("Typing formatted dictation");
+        setAction("Pasting formatted dictation");
       }
 
       console.log(`Refined dictation: ${outputText}`);
       const typingResult = await typeText(outputText);
-      if (typingResult === "typed") {
+      if (typingResult === "pasted") {
         setBubbleState("Typing");
-        console.log("Typed into active application.");
+        console.log("Pasted into active application.");
+      } else if (typingResult === "typed") {
+        setBubbleState("Typing");
+        console.log("Inserted into active application with keyboard fallback.");
       } else if (typingResult === "clipboard") {
         console.log("Typing failed. Copied result to clipboard instead.");
       } else {
@@ -888,11 +978,13 @@ async function stopPipelineRecording() {
       }
       hideBubbleWindow();
       completeOverlay(
-        typingResult === "typed"
-          ? "Typed into active app"
-          : typingResult === "clipboard"
-            ? "Copied result to clipboard"
-            : "Nothing to type"
+        typingResult === "pasted"
+          ? "Pasted into active app"
+          : typingResult === "typed"
+            ? "Inserted into active app"
+            : typingResult === "clipboard"
+              ? "Copied result to clipboard"
+              : "Nothing to type"
       );
     }
 

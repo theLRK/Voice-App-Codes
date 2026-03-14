@@ -1,4 +1,4 @@
-const { ipcRenderer } = require("electron");
+const api = window.flowmative;
 
 const overlayElement = document.querySelector(".overlay");
 const stateElement = document.getElementById("state");
@@ -16,16 +16,10 @@ function setSectionText(element, value, fallbackText) {
   element.classList.toggle("muted", !nextValue);
 }
 
-ipcRenderer.on("assistant-state", (_event, state) => {
-  const normalizedState = typeof state === "string" && state.trim() ? state.trim() : "Ready";
+api.onOverlayUpdate((payload = {}) => {
+  const normalizedState = typeof payload.state === "string" && payload.state.trim() ? payload.state.trim() : "Ready";
   overlayElement.dataset.state = normalizedState.toLowerCase();
   stateElement.textContent = formatStateLabel(normalizedState);
-});
-
-ipcRenderer.on("assistant-transcript", (_event, transcript) => {
-  setSectionText(transcriptElement, transcript, "Waiting for input");
-});
-
-ipcRenderer.on("assistant-action", (_event, action) => {
-  setSectionText(actionElement, action, "Standing by");
+  setSectionText(transcriptElement, payload.transcript, "Waiting for input");
+  setSectionText(actionElement, payload.action, "Standing by");
 });
