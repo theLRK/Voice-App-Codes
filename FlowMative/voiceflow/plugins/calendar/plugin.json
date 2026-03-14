@@ -1,0 +1,5 @@
+{
+  "name": "calendar",
+  "description": "Plan meetings and calendar actions",
+  "triggerWords": ["calendar", "meeting", "schedule"]
+}

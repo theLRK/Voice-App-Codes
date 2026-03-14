@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FlowMative Settings</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 24px;
+        box-sizing: border-box;
+        background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+        color: #17324a;
+      }
+
+      main {
+        max-width: 560px;
+        margin: 0 auto;
+        background: rgba(255, 255, 255, 0.92);
+        border-radius: 18px;
+        padding: 22px;
+        box-shadow: 0 16px 40px rgba(23, 50, 74, 0.12);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.4rem;
+      }
+
+      h2 {
+        margin: 24px 0 10px;
+        font-size: 1.1rem;
+      }
+
+      p {
+        margin: 0 0 20px;
+        color: #4b647c;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      label {
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+
+      select,
+      input,
+      textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #c8d8eb;
+        border-radius: 10px;
+        font: inherit;
+        background: #fff;
+        color: #17324a;
+        box-sizing: border-box;
+      }
+
+      textarea {
+        min-height: 84px;
+        resize: vertical;
+      }
+
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font: inherit;
+        cursor: pointer;
+        background: #dcecff;
+        color: #17324a;
+      }
+
+      button.danger {
+        background: #ffdfe0;
+        color: #7a1c24;
+      }
+
+      .macro-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .macro-item {
+        padding: 14px;
+        border-radius: 12px;
+        background: #f6faff;
+        border: 1px solid #dbe7f5;
+      }
+
+      .macro-phrase {
+        font-weight: 700;
+      }
+
+      .macro-expansion {
+        margin-top: 6px;
+        white-space: pre-wrap;
+        color: #40607d;
+      }
+
+      .macro-actions {
+        margin-top: 10px;
+      }
+
+      #status {
+        min-height: 1.25rem;
+        margin-top: 8px;
+        color: #2d5f92;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Assistant Settings</h1>
+      <p>Changes are saved immediately and applied to the running assistant.</p>
+
+      <div class="field">
+        <label for="pushToTalkKey">Push-to-talk key</label>
+        <select id="pushToTalkKey">
+          <option value="Ctrl+Space">Ctrl+Space</option>
+          <option value="Alt+Space">Alt+Space</option>
+          <option value="Ctrl+Alt+Space">Ctrl+Alt+Space</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="auto">Auto detect</option>
+          <option value="dictation">Dictation only</option>
+          <option value="command">Command only</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="speechModel">Speech model</label>
+        <select id="speechModel">
+          <option value="whisper-small">whisper-small (recommended)</option>
+          <option value="whisper-base">whisper-base (faster)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="commandModel">Command model</label>
+        <select id="commandModel">
+          <option value="gpt-4o-mini">gpt-4o-mini</option>
+          <option value="gpt-4o">gpt-4o</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="enableFormatting">Formatting processor</label>
+        <select id="enableFormatting">
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="typingSpeed">Typing speed</label>
+        <select id="typingSpeed">
+          <option value="slow">Slow</option>
+          <option value="normal">Normal</option>
+          <option value="fast">Fast</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="startOnLogin">Start assistant on login</label>
+        <select id="startOnLogin">
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+
+      <h2>Macro Manager</h2>
+      <div class="field">
+        <label for="macroPhrase">Macro phrase</label>
+        <input id="macroPhrase" type="text" placeholder="daily standup" />
+      </div>
+
+      <div class="field">
+        <label for="macroExpansion">Expansion</label>
+        <textarea id="macroExpansion" placeholder="Hello team, here is my update for today:"></textarea>
+      </div>
+
+      <button id="addMacro">Add Macro</button>
+
+      <h2>Saved Macros</h2>
+      <div id="macroList" class="macro-list"></div>
+      <div id="status"></div>
+    </main>
+
+    <script>
+      const { ipcRenderer } = require("electron");
+
+      const controls = {
+        pushToTalkKey: document.getElementById("pushToTalkKey"),
+        mode: document.getElementById("mode"),
+        speechModel: document.getElementById("speechModel"),
+        commandModel: document.getElementById("commandModel"),
+        enableFormatting: document.getElementById("enableFormatting"),
+        typingSpeed: document.getElementById("typingSpeed"),
+        startOnLogin: document.getElementById("startOnLogin")
+      };
+      const macroPhraseInput = document.getElementById("macroPhrase");
+      const macroExpansionInput = document.getElementById("macroExpansion");
+      const addMacroButton = document.getElementById("addMacro");
+      const macroListElement = document.getElementById("macroList");
+      const statusElement = document.getElementById("status");
+
+      function setStatus(message) {
+        statusElement.textContent = message;
+      }
+
+      function toViewValue(key, value) {
+        if (key === "enableFormatting") {
+          return String(Boolean(value));
+        }
+
+        if (key === "startOnLogin") {
+          return String(Boolean(value));
+        }
+
+        return value;
+      }
+
+      function fromViewValue(key, value) {
+        if (key === "enableFormatting") {
+          return value === "true";
+        }
+
+        if (key === "startOnLogin") {
+          return value === "true";
+        }
+
+        return value;
+      }
+
+      async function loadSettings() {
+        const settings = await ipcRenderer.invoke("settings:get");
+
+        for (const [key, control] of Object.entries(controls)) {
+          control.value = toViewValue(key, settings[key]);
+        }
+      }
+
+      async function loadMacros() {
+        const macros = await ipcRenderer.invoke("macros:get");
+        renderMacros(macros);
+      }
+
+      function renderMacros(macros) {
+        macroListElement.innerHTML = "";
+
+        const entries = Object.entries(macros);
+
+        if (!entries.length) {
+          const emptyState = document.createElement("div");
+          emptyState.textContent = "No macros saved yet.";
+          macroListElement.appendChild(emptyState);
+          return;
+        }
+
+        for (const [phrase, expansion] of entries) {
+          const item = document.createElement("div");
+          item.className = "macro-item";
+
+          const phraseElement = document.createElement("div");
+          phraseElement.className = "macro-phrase";
+          phraseElement.textContent = phrase;
+
+          const expansionElement = document.createElement("div");
+          expansionElement.className = "macro-expansion";
+          expansionElement.textContent = expansion;
+
+          const actions = document.createElement("div");
+          actions.className = "macro-actions";
+
+          const deleteButton = document.createElement("button");
+          deleteButton.className = "danger";
+          deleteButton.textContent = "Delete";
+          deleteButton.addEventListener("click", async () => {
+            setStatus("Deleting macro...");
+            await ipcRenderer.invoke("macros:delete", phrase);
+            await loadMacros();
+            setStatus("Macro deleted.");
+          });
+
+          actions.appendChild(deleteButton);
+          item.append(phraseElement, expansionElement, actions);
+          macroListElement.appendChild(item);
+        }
+      }
+
+      for (const [key, control] of Object.entries(controls)) {
+        control.addEventListener("change", async () => {
+          setStatus("Saving...");
+
+          try {
+            await ipcRenderer.invoke("settings:update", {
+              key,
+              value: fromViewValue(key, control.value)
+            });
+            setStatus("Saved.");
+          } catch (error) {
+            setStatus(error.message || "Failed to save settings.");
+          }
+        });
+      }
+
+      addMacroButton.addEventListener("click", async () => {
+        setStatus("Adding macro...");
+
+        try {
+          await ipcRenderer.invoke("macros:add", {
+            phrase: macroPhraseInput.value,
+            expansion: macroExpansionInput.value
+          });
+          macroPhraseInput.value = "";
+          macroExpansionInput.value = "";
+          await loadMacros();
+          setStatus("Macro added.");
+        } catch (error) {
+          setStatus(error.message || "Failed to add macro.");
+        }
+      });
+
+      Promise.all([loadSettings(), loadMacros()]).catch((error) => {
+        setStatus(error.message || "Failed to load settings.");
+      });
+    </script>
+  </body>
+</html>

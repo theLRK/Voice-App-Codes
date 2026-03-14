@@ -1,0 +1,5 @@
+{
+  "name": "webSearch",
+  "description": "Search the web",
+  "triggerWords": ["search", "look up", "find"]
+}

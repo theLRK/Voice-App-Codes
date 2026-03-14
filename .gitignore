@@ -1,0 +1,16 @@
+node_modules/
+**/node_modules/
+__pycache__/
+**/__pycache__/
+.venv/
+**/.venv/
+*.pyc
+*.pyo
+*.pyd
+.env
+.DS_Store
+dist/
+build/
+*.log
+*.wav
+FlowMative/voiceflow/config/settings.json

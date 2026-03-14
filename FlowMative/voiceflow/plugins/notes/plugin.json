@@ -1,0 +1,5 @@
+{
+  "name": "notes",
+  "description": "Capture and organize notes",
+  "triggerWords": ["note", "notes", "write this down"]
+}

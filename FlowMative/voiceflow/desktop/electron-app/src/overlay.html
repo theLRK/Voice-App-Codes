@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FlowMative Assistant Overlay</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", sans-serif;
+        --panel-bg: rgba(6, 18, 33, 0.82);
+        --panel-border: rgba(142, 197, 255, 0.28);
+        --panel-shadow: rgba(4, 10, 20, 0.4);
+        --text-main: #f4f8ff;
+        --text-muted: rgba(227, 237, 252, 0.72);
+        --accent: #76d6ff;
+        --accent-strong: #b7ecff;
+        --success: #7af0b0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 20px;
+        background: transparent;
+        color: var(--text-main);
+      }
+
+      .overlay {
+        position: relative;
+        width: 100%;
+        min-height: 160px;
+        padding: 18px 18px 16px;
+        border: 1px solid var(--panel-border);
+        border-radius: 24px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top left, rgba(118, 214, 255, 0.18), transparent 42%),
+          linear-gradient(145deg, rgba(16, 36, 66, 0.96), var(--panel-bg));
+        box-shadow:
+          0 18px 50px var(--panel-shadow),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(18px);
+      }
+
+      .overlay::before {
+        content: "";
+        position: absolute;
+        inset: -40% auto auto 62%;
+        width: 180px;
+        height: 180px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(118, 214, 255, 0.26), transparent 68%);
+        pointer-events: none;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .pulse {
+        width: 12px;
+        height: 12px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        color: rgba(118, 214, 255, 0.62);
+        background: var(--accent);
+        box-shadow: 0 0 0 0 rgba(118, 214, 255, 0.72);
+        animation: pulse 1.8s infinite;
+      }
+
+      .state-group {
+        min-width: 0;
+      }
+
+      .eyebrow {
+        margin: 0 0 4px;
+        color: var(--text-muted);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .state {
+        margin: 0;
+        font-size: 1.34rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+
+      .content {
+        display: grid;
+        gap: 12px;
+      }
+
+      .section {
+        min-height: 44px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .section-label {
+        margin: 0 0 6px;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .section-value {
+        margin: 0;
+        color: var(--accent-strong);
+        font-size: 0.96rem;
+        line-height: 1.38;
+        word-break: break-word;
+      }
+
+      .section-value.muted {
+        color: var(--text-muted);
+      }
+
+      .overlay[data-state="completed"] .pulse {
+        color: rgba(122, 240, 176, 0.58);
+        background: var(--success);
+        box-shadow: 0 0 0 0 rgba(122, 240, 176, 0.6);
+      }
+
+      .overlay[data-state="processing"] .pulse,
+      .overlay[data-state="executing tool"] .pulse {
+        color: rgba(255, 214, 122, 0.54);
+        background: #ffd67a;
+        box-shadow: 0 0 0 0 rgba(255, 214, 122, 0.6);
+      }
+
+      @keyframes pulse {
+        0% {
+          transform: scale(0.95);
+          box-shadow: 0 0 0 0 currentColor;
+        }
+
+        70% {
+          transform: scale(1);
+          box-shadow: 0 0 0 12px transparent;
+        }
+
+        100% {
+          transform: scale(0.95);
+          box-shadow: 0 0 0 0 transparent;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="overlay" data-state="idle">
+      <header class="header">
+        <div class="pulse" aria-hidden="true"></div>
+        <div class="state-group">
+          <p class="eyebrow">Assistant</p>
+          <h1 id="state" class="state">Ready...</h1>
+        </div>
+      </header>
+
+      <section class="content">
+        <div class="section">
+          <p class="section-label">Transcript</p>
+          <p id="transcript" class="section-value muted">Waiting for input</p>
+        </div>
+
+        <div class="section">
+          <p class="section-label">Action</p>
+          <p id="action" class="section-value muted">Standing by</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="./overlayRenderer.js"></script>
+  </body>
+</html>

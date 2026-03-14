@@ -1,0 +1,19 @@
+{
+  "name": "flowmative-electron-app",
+  "version": "0.1.0",
+  "description": "Electron desktop app for FlowMative",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "electron:start": "electron .",
+    "start": "electron .",
+    "check": "node --check src/main.js && node --check src/services/transcribeAudio.js",
+    "refine:test": "node ../../assistant/refinement/testRefineDictation.js"
+  },
+  "dependencies": {
+    "electron": "^41.0.2",
+    "openai": "^6.29.0",
+    "robotjs": "^0.7.0",
+    "uiohook-napi": "^1.5.4"
+  }
+}

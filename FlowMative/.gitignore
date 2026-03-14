@@ -1,0 +1,11 @@
+node_modules/
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+*.pyd
+.env
+dist/
+build/
+.DS_Store
+test.wav

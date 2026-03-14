@@ -1,0 +1,22 @@
+{
+  "name": "flowmative",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo workspace for the FlowMative desktop dictation stack",
+  "workspaces": [
+    "voiceflow/backend/node-api",
+    "voiceflow/ai/text-processor",
+    "voiceflow/utils/keyboard-injection",
+    "voiceflow/desktop/electron-app"
+  ],
+  "scripts": {
+    "check": "npm run check --workspaces --if-present",
+    "dev": "node scripts/dev.js",
+    "dev:electron": "npm run start --workspace voiceflow/desktop/electron-app",
+    "electron:start": "npm run electron:start --workspace voiceflow/desktop/electron-app",
+    "dev:whisper": "python -m uvicorn --app-dir voiceflow/speech/whisper-service app.main:app --host 127.0.0.1 --port 8000"
+  },
+  "dependencies": {
+    "active-win": "^9.0.0"
+  }
+}
